@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 import qualified Data.IntMap as M
 import Data.List
 import Data.Maybe
@@ -5,7 +7,12 @@ import System.Random
 
 -- data Suit = Spades | Hearts | Clubs | Diamonds deriving (Eq, Show, Ord)
 
-data HorsePosition = Scratched Int | Distance Int deriving (Show)
+newtype Chips = Chips Int deriving (Eq, Ord, Num)
+
+instance Show Chips where
+  show (Chips c) = "$" ++ show c
+  
+data HorsePosition = Scratched Chips | Distance Int deriving (Show)
 
 data Horse = Horse { position :: HorsePosition
                    , finish :: Int
@@ -16,7 +23,7 @@ advanceHorse h = case position h of
                     Scratched _ -> error "can't advance scratched horsed"
                     Distance d  -> h { position = Distance (d + 1) }
 
-scratchHorse :: Int -> Horse -> Horse
+scratchHorse :: Chips -> Horse -> Horse
 scratchHorse cost horse = horse{position = Scratched cost}
 
 finished :: Horse -> Bool
@@ -68,8 +75,8 @@ countScratched rs = length $ filter isScratched $ M.elems $ horses rs
 allScratched :: RoundState -> Bool
 allScratched rs = 4 == (countScratched rs)
 
-scratchValue :: RoundState -> Int
-scratchValue rs = 5 * (1 + countScratched rs)
+scratchValue :: RoundState -> Chips
+scratchValue rs = 5 * (1 + fromIntegral (countScratched rs)) 
 
 playTurn :: Int -> RoundState -> RoundState
 playTurn roll rs
