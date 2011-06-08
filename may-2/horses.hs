@@ -37,6 +37,9 @@ newtype Players = Players (M.IntMap Player, Int) deriving Show
 fromList :: [Player] -> Players
 fromList ps = Players (M.fromList $ zip [0..] ps, 0)
 
+toList :: Players -> [Player]
+toList (Players (m, _)) = map snd $ M.toList m
+
 currentPlayer :: Players -> Player
 currentPlayer (Players (m,i)) = m M.! i
 
@@ -63,7 +66,7 @@ finished h = case position h of
                     Distance d  -> d == finish h
 
 data RoundState = RoundState { horses :: M.IntMap Horse
-                             } deriving (Show)
+                             , players :: Players } deriving (Show)
 
 padString :: Int -> String -> String
 padString width str
@@ -80,14 +83,25 @@ showHorse (number, Horse pos fin) = "Horse " ++ padString 2 (show number) ++ ": 
                                                     Scratched c -> replicate fin 'x' ++ " " ++ show c
                                                     Distance  d -> showLane d fin
 
-showState :: RoundState -> String
-showState = concat . intersperse "\n" . map showHorse . M.toList . horses
+showPlayer :: Player -> String
+showPlayer p = name p ++ ": " ++ show (chips p)
 
+showState :: RoundState -> String
+showState rs = showHorses rs ++ "\n-----\n" ++ showPlayers (players rs)
+               
+showHorses :: RoundState -> String
+showHorses = concat . intersperse "\n" . map showHorse . M.toList . horses
+
+showPlayers :: Players -> String
+showPlayers = intercalate "\n" . map showPlayer . toList
+
+          
 makeHorse :: Int -> Horse
 makeHorse finishSpot = Horse{position = Distance 0, finish = finishSpot}
 
-makeRound :: RoundState
-makeRound = RoundState { horses = M.fromList pairs }
+makeRound :: Players -> RoundState
+makeRound ps = RoundState { horses = M.fromList pairs, 
+                            players = ps }
             where pairs = zip lanes $ map makeHorse lengths
                   lanes = [2..12]
                   lengths = [3,4,5,6,7,8,7,6,5,4,3]
@@ -111,17 +125,17 @@ scratchValue rs = 5 * (1 + fromIntegral (countScratched rs))
 
 playTurn :: Int -> RoundState -> RoundState
 playTurn roll rs
-    | rollHitScratch roll rs = rs
+    | rollHitScratch roll rs =
+        rs { players = modifyCurrent charge (players rs) }
     | allScratched rs = rs{horses = M.adjust advanceHorse roll (horses rs)}
     | otherwise = rs{horses = M.adjust (scratchHorse (scratchValue rs)) roll (horses rs)}
+  where charge = snd . debit (scratchValue rs)
+
+nextTurn :: RoundState -> RoundState
+nextTurn rs = rs { players = advancePlayer (players rs) }
 
 winner :: RoundState -> Maybe (Int, Horse)
 winner = listToMaybe . filter (finished . snd) . M.toList . horses
-
-playRound' :: [Int] -> [RoundState]
-playRound' = takeTurns makeRound
-          where takeTurns rs (roll:rolls) = rs : takeTurns (playTurn roll rs) rolls
-                takeTurns rs [] = [rs]
 
 makeDiceRolls :: Int -> [Int]
 makeDiceRolls seed = map (\r -> (r `mod` 6) + 1) $ randoms (mkStdGen seed) :: [Int]
@@ -129,14 +143,22 @@ makeDiceRolls seed = map (\r -> (r `mod` 6) + 1) $ randoms (mkStdGen seed) :: [I
 makePlayerRolls :: [Int] -> [Int]
 makePlayerRolls (first:second:rest) = (first + second):makePlayerRolls rest
 
-playRound :: [Int] -> [RoundState]
-playRound rolls = losers ++ [first]
-                 where states = playRound' rolls
+playRound :: Players -> [Int] -> [RoundState]
+playRound ps rolls = losers ++ [first]
+                 where states = playRound' ps rolls
                        (losers,first:_) = span (isNothing . winner) states
+
+playRound' :: Players -> [Int] -> [RoundState]
+playRound' ps = takeTurns (makeRound ps)
+          where takeTurns rs (roll:rolls) =
+                  rs : takeTurns (nextTurn $ playTurn roll rs) rolls
+                takeTurns rs [] = [rs]
+
 
 -- prettyRound $ makePlayerRolls $ makeDiceRolls 2
 prettyRound :: [Int] -> IO ()
-prettyRound = putStrLn . concat . intersperse "\n=====\n" . map showState . playRound
+prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
+  where ps = fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
 
 {-
 1. Get deck of cards, 2 dice
