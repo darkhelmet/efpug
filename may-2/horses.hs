@@ -18,6 +18,20 @@ data Horse = Horse { position :: HorsePosition
                    , finish :: Int
                    } deriving (Show)
 
+data Player = Player { name :: String
+                     , chips :: Chips
+                     } deriving (Show)
+
+player :: String -> Player
+player n = Player { name = n, chips = 100 }
+
+credit :: Player -> Chips -> Player
+credit p c = p { chips = chips p + c }
+
+debit :: Player -> Chips -> (Chips, Player)
+debit p c | chips p >= c = (c, p { chips = chips p - c })
+          | otherwise = (chips p, p { chips = 0 })
+
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
                     Scratched _ -> error "can't advance scratched horsed"
