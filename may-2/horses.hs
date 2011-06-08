@@ -25,12 +25,29 @@ data Player = Player { name :: String
 player :: String -> Player
 player n = Player { name = n, chips = 100 }
 
-credit :: Player -> Chips -> Player
-credit p c = p { chips = chips p + c }
+credit :: Chips -> Player -> Player
+credit c p = p { chips = chips p + c }
 
-debit :: Player -> Chips -> (Chips, Player)
-debit p c | chips p >= c = (c, p { chips = chips p - c })
+debit :: Chips -> Player -> (Chips, Player)
+debit c p | chips p >= c = (c, p { chips = chips p - c })
           | otherwise = (chips p, p { chips = 0 })
+
+newtype Players = Players (M.IntMap Player, Int) deriving Show
+
+fromList :: [Player] -> Players
+fromList ps = Players (M.fromList $ zip [0..] ps, 0)
+
+currentPlayer :: Players -> Player
+currentPlayer (Players (m,i)) = m M.! i
+
+advancePlayer :: Players -> Players
+advancePlayer (Players (m,i)) = Players (m, (i+1) `mod` M.size m)
+
+modifyAll :: (Player -> Player) -> Players -> Players
+modifyAll tx (Players (m,i)) = Players (M.map tx m, i)
+
+modifyCurrent :: (Player -> Player) -> Players -> Players
+modifyCurrent tx (Players (m,i)) = Players (M.adjust tx i m,i) 
 
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
