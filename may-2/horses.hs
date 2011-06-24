@@ -92,8 +92,13 @@ showHorse (number, Horse pos fin) = "Horse " ++ padString 2 (show number) ++ ": 
 showPlayer :: Player -> String
 showPlayer p = name p ++ ": " ++ show (chips p)
 
+showRoll :: RoundState -> String
+showRoll rs = name player ++ " rolled a " ++ show roll ++ "!"
+    where player = currentPlayer $ players rs
+          roll = previousRoll rs
+
 showState :: RoundState -> String
-showState rs = "Roll: " ++ show (previousRoll rs) ++ "\n" ++ showHorses rs ++ "\n-----\n" ++ showPlayers (players rs) ++ "\n" ++ showPot rs
+showState rs = showRoll rs ++ "\n" ++ showHorses rs ++ "\n-----\n" ++ showPlayers (players rs) ++ "\n" ++ showPot rs
 
 showHorses :: RoundState -> String
 showHorses = concat . intersperse "\n" . map showHorse . M.toList . horses
@@ -174,6 +179,15 @@ prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
   where ps = fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
 
 main = prettyRound $ makePlayerRolls $ makeDiceRolls 2
+
+{-
+
+- Remove players between rounds
+- Cards: Make deck (2-12 only), shuffle, deal, pay when scratching
+- Divide pot at end of round
+- Win/finish game when 1 player left
+
+-}
 
 {-
 1. Get deck of cards, 2 dice
