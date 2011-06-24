@@ -71,6 +71,7 @@ finished h = case position h of
 
 data RoundState = RoundState { horses :: M.IntMap Horse
                              , pot :: Chips
+                             , previousRoll :: Int
                              , players :: Players } deriving (Show)
 
 padString :: Int -> String -> String
@@ -92,7 +93,7 @@ showPlayer :: Player -> String
 showPlayer p = name p ++ ": " ++ show (chips p)
 
 showState :: RoundState -> String
-showState rs = showHorses rs ++ "\n-----\n" ++ showPlayers (players rs) ++ "\n" ++ showPot rs
+showState rs = "Roll: " ++ show (previousRoll rs) ++ "\n" ++ showHorses rs ++ "\n-----\n" ++ showPlayers (players rs) ++ "\n" ++ showPot rs
 
 showHorses :: RoundState -> String
 showHorses = concat . intersperse "\n" . map showHorse . M.toList . horses
@@ -109,7 +110,8 @@ makeHorse finishSpot = Horse{position = Distance 0, finish = finishSpot}
 makeRound :: Players -> RoundState
 makeRound ps = RoundState { horses = M.fromList pairs,
                             pot = 0,
-                            players = ps }
+                            players = ps,
+                            previousRoll = 0 }
             where pairs = zip lanes $ map makeHorse lengths
                   lanes = [2..12]
                   lengths = [3,4,5,6,7,8,7,6,5,4,3]
@@ -128,16 +130,19 @@ countScratched rs = length $ filter isScratched $ M.elems $ horses rs
 allScratched :: RoundState -> Bool
 allScratched rs = 4 == (countScratched rs)
 
-scratchValue :: RoundState -> Chips
-scratchValue rs = 5 * (1 + fromIntegral (countScratched rs))
+nextScratchValue :: RoundState -> Chips
+nextScratchValue rs = 5 * (1 + fromIntegral (countScratched rs))
 
 playTurn :: Int -> RoundState -> RoundState
 playTurn roll rs
     | rollHitScratch roll rs =
-        rs { players = players', pot = paid + pot rs }
-    | allScratched rs = rs{horses = M.adjust advanceHorse roll (horses rs)}
-    | otherwise = rs{horses = M.adjust (scratchHorse (scratchValue rs)) roll (horses rs)}
-  where charge = flip debit (scratchValue rs)
+        rs { players = players', pot = paid + pot rs, previousRoll = roll }
+    | allScratched rs = rs{horses = M.adjust advanceHorse roll (horses rs), previousRoll = roll }
+    | otherwise = rs{horses = M.adjust (scratchHorse (nextScratchValue rs)) roll (horses rs), previousRoll = roll }
+  where charge = flip debit (value pos)
+        horse = (horses rs) M.! roll
+        pos = position horse
+        value (Scratched n) = n
         (players', paid) = modifyCurrent charge (players rs)
 
 nextTurn :: RoundState -> RoundState
