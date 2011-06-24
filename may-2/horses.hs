@@ -121,9 +121,6 @@ isScratched horse = case position horse of
                         Scratched _ -> True
                         Distance  _ -> False
 
-rollHitScratch :: Int -> RoundState -> Bool
-rollHitScratch number rs = isScratched $ horses rs M.! number
-
 countScratched :: RoundState -> Int
 countScratched rs = length $ filter isScratched $ M.elems $ horses rs
 
@@ -133,16 +130,20 @@ allScratched rs = 4 == (countScratched rs)
 nextScratchValue :: RoundState -> Chips
 nextScratchValue rs = 5 * (1 + fromIntegral (countScratched rs))
 
+scratchValue :: Int -> RoundState -> Maybe Chips
+scratchValue roll rs = value pos
+    where horse = (horses rs) M.! roll
+          pos = position horse
+          value (Scratched n) = Just n
+          value (Distance _) = Nothing
+
 playTurn :: Int -> RoundState -> RoundState
 playTurn roll rs
-    | rollHitScratch roll rs =
-        rs { players = players', pot = paid + pot rs, previousRoll = roll }
+    | isJust sc = rs { players = players', pot = paid + pot rs, previousRoll = roll }
     | allScratched rs = rs{horses = M.adjust advanceHorse roll (horses rs), previousRoll = roll }
     | otherwise = rs{horses = M.adjust (scratchHorse (nextScratchValue rs)) roll (horses rs), previousRoll = roll }
-  where charge = flip debit (value pos)
-        horse = (horses rs) M.! roll
-        pos = position horse
-        value (Scratched n) = n
+  where charge = flip debit $ fromJust sc
+        sc = scratchValue roll rs
         (players', paid) = modifyCurrent charge (players rs)
 
 nextTurn :: RoundState -> RoundState
