@@ -34,27 +34,26 @@ debit :: Player -> Chips -> (Player, Chips)
 debit p c | chips p >= c = (p { chips = chips p - c }, c)
           | otherwise = (p { chips = 0 }, chips p)
 
-newtype Players = Players (M.IntMap Player, Int) deriving Show
+newtype Players = Players [Player] deriving Show
 
 fromList :: [Player] -> Players
-fromList ps = Players (M.fromList $ zip [0..] ps, 0)
+fromList = Players
 
 toList :: Players -> [Player]
-toList (Players (m, _)) = map snd $ M.toList m
+toList (Players l) = l
 
 currentPlayer :: Players -> Player
-currentPlayer (Players (m,i)) = m M.! i
+currentPlayer = head . toList
 
 advancePlayer :: Players -> Players
-advancePlayer (Players (m,i)) = Players (m, (i+1) `mod` M.size m)
+advancePlayer (Players (p:ps)) = Players (ps ++ [p])
 
 modifyAll :: (Player -> Player) -> Players -> Players
-modifyAll tx (Players (m,i)) = Players (M.map tx m, i)
+modifyAll f = fromList . map f . toList
 
 modifyCurrent :: (Player -> (Player, a)) -> Players -> (Players, a)
-modifyCurrent tx players@(Players (m,i)) = (updatedPlayers, stuff)
-                where updatedPlayers = Players (M.insert i updatedPlayer m, i)
-                      (updatedPlayer, stuff) = tx $ currentPlayer players
+modifyCurrent tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
+    where (updatedPlayer, stuff) = tx p
 
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
