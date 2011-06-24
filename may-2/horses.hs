@@ -55,6 +55,9 @@ modifyCurrent :: (Player -> (Player, a)) -> Players -> (Players, a)
 modifyCurrent tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
     where (updatedPlayer, stuff) = tx p
 
+dropPlayer :: Players -> Players
+dropPlayer (Players (p:ps)) = fromList ps
+
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
                     Scratched _ -> error "can't advance scratched horsed"
@@ -151,7 +154,12 @@ playTurn roll rs
         (players', paid) = modifyCurrent charge (players rs)
 
 nextTurn :: RoundState -> RoundState
-nextTurn rs = rs { players = advancePlayer (players rs) }
+nextTurn rs
+    | currentPlayerIsBroke = rs { players = dropPlayer ps  }
+    | otherwise = rs { players = advancePlayer ps }
+    where ps = players rs
+          currentPlayerIsBroke = 0 == chips cp
+          cp = currentPlayer ps
 
 winner :: RoundState -> Maybe (Int, Horse)
 winner = listToMaybe . filter (finished . snd) . M.toList . horses
@@ -162,10 +170,15 @@ makeDiceRolls seed = map (\r -> (r `mod` 6) + 1) $ randoms (mkStdGen seed) :: [I
 makePlayerRolls :: [Int] -> [Int]
 makePlayerRolls (first:second:rest) = (first + second):makePlayerRolls rest
 
+gameOver :: RoundState -> Bool
+gameOver rs = onePlayerLeft || horseFinished
+    where onePlayerLeft = 1 == (length $ toList $ players rs)
+          horseFinished = isJust . winner $ rs
+
 playRound :: Players -> [Int] -> [RoundState]
 playRound ps rolls = losers ++ [first]
-                 where states = playRound' ps rolls
-                       (losers,first:_) = span (isNothing . winner) states
+    where states = playRound' ps rolls
+          (losers,first:_) = span (not . gameOver) states
 
 playRound' :: Players -> [Int] -> [RoundState]
 playRound' ps = takeTurns (makeRound ps)
