@@ -7,11 +7,13 @@ import System.Random
 
 -- data Suit = Spades | Hearts | Clubs | Diamonds deriving (Eq, Show, Ord)
 
+-- Bitchin' type safety!!
+-- HOLY SHIT COMPILE TIME!!!!..............ladies???
 newtype Chips = Chips Int deriving (Eq, Ord, Num)
 
 instance Show Chips where
   show (Chips c) = "$" ++ show c
-  
+
 data HorsePosition = Scratched Chips | Distance Int deriving (Show)
 
 data Horse = Horse { position :: HorsePosition
@@ -28,9 +30,9 @@ player n = Player { name = n, chips = 100 }
 credit :: Chips -> Player -> Player
 credit c p = p { chips = chips p + c }
 
-debit :: Chips -> Player -> (Chips, Player)
-debit c p | chips p >= c = (c, p { chips = chips p - c })
-          | otherwise = (chips p, p { chips = 0 })
+debit :: Player -> Chips -> (Player, Chips)
+debit p c | chips p >= c = (p { chips = chips p - c }, c)
+          | otherwise = (p { chips = 0 }, chips p)
 
 newtype Players = Players (M.IntMap Player, Int) deriving Show
 
@@ -49,8 +51,10 @@ advancePlayer (Players (m,i)) = Players (m, (i+1) `mod` M.size m)
 modifyAll :: (Player -> Player) -> Players -> Players
 modifyAll tx (Players (m,i)) = Players (M.map tx m, i)
 
-modifyCurrent :: (Player -> Player) -> Players -> Players
-modifyCurrent tx (Players (m,i)) = Players (M.adjust tx i m,i) 
+modifyCurrent :: (Player -> (Player, a)) -> Players -> (Players, a)
+modifyCurrent tx players@(Players (m,i)) = (updatedPlayers, stuff)
+                where updatedPlayers = Players (M.insert i updatedPlayer m, i)
+                      (updatedPlayer, stuff) = tx $ currentPlayer players
 
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
@@ -66,6 +70,7 @@ finished h = case position h of
                     Distance d  -> d == finish h
 
 data RoundState = RoundState { horses :: M.IntMap Horse
+                             , pot :: Chips
                              , players :: Players } deriving (Show)
 
 padString :: Int -> String -> String
@@ -87,20 +92,23 @@ showPlayer :: Player -> String
 showPlayer p = name p ++ ": " ++ show (chips p)
 
 showState :: RoundState -> String
-showState rs = showHorses rs ++ "\n-----\n" ++ showPlayers (players rs)
-               
+showState rs = showHorses rs ++ "\n-----\n" ++ showPlayers (players rs) ++ "\n" ++ showPot rs
+
 showHorses :: RoundState -> String
 showHorses = concat . intersperse "\n" . map showHorse . M.toList . horses
 
 showPlayers :: Players -> String
 showPlayers = intercalate "\n" . map showPlayer . toList
 
-          
+showPot :: RoundState -> String
+showPot rs = "Pot: " ++ show (pot rs)
+
 makeHorse :: Int -> Horse
 makeHorse finishSpot = Horse{position = Distance 0, finish = finishSpot}
 
 makeRound :: Players -> RoundState
-makeRound ps = RoundState { horses = M.fromList pairs, 
+makeRound ps = RoundState { horses = M.fromList pairs,
+                            pot = 0,
                             players = ps }
             where pairs = zip lanes $ map makeHorse lengths
                   lanes = [2..12]
@@ -121,15 +129,16 @@ allScratched :: RoundState -> Bool
 allScratched rs = 4 == (countScratched rs)
 
 scratchValue :: RoundState -> Chips
-scratchValue rs = 5 * (1 + fromIntegral (countScratched rs)) 
+scratchValue rs = 5 * (1 + fromIntegral (countScratched rs))
 
 playTurn :: Int -> RoundState -> RoundState
 playTurn roll rs
     | rollHitScratch roll rs =
-        rs { players = modifyCurrent charge (players rs) }
+        rs { players = players', pot = paid + pot rs }
     | allScratched rs = rs{horses = M.adjust advanceHorse roll (horses rs)}
     | otherwise = rs{horses = M.adjust (scratchHorse (scratchValue rs)) roll (horses rs)}
-  where charge = snd . debit (scratchValue rs)
+  where charge = flip debit (scratchValue rs)
+        (players', paid) = modifyCurrent charge (players rs)
 
 nextTurn :: RoundState -> RoundState
 nextTurn rs = rs { players = advancePlayer (players rs) }
@@ -154,11 +163,11 @@ playRound' ps = takeTurns (makeRound ps)
                   rs : takeTurns (nextTurn $ playTurn roll rs) rolls
                 takeTurns rs [] = [rs]
 
-
--- prettyRound $ makePlayerRolls $ makeDiceRolls 2
 prettyRound :: [Int] -> IO ()
 prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
   where ps = fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
+
+main = prettyRound $ makePlayerRolls $ makeDiceRolls 2
 
 {-
 1. Get deck of cards, 2 dice
