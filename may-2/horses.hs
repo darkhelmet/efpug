@@ -87,7 +87,7 @@ data RoundState = RoundState { horses :: M.IntMap Horse
                              , pot :: Chips
                              , previousRoll :: Int
                              , players :: Players } deriving (Show)
-
+                                                             
 padString :: Int -> String -> String
 padString width str
     | length str < width = replicate (width - length str) ' ' ++ str
@@ -187,13 +187,13 @@ gameOver rs = onePlayerLeft || horseFinished
     where onePlayerLeft = 1 == (length $ toList $ players rs)
           horseFinished = isJust . winner $ rs
 
-playRound :: Players -> [Int] -> [RoundState]
-playRound ps rolls = losers ++ [first]
-    where states = playRound' ps rolls
+watchHorses :: Players -> [Int] -> [RoundState]
+watchHorses ps rolls = losers ++ [first]
+    where states = playTurns ps rolls
           (losers,first:_) = span (not . gameOver) states
 
-playRound' :: Players -> [Int] -> [RoundState]
-playRound' ps = takeTurns (makeRound ps)
+playTurns :: Players -> [Int] -> [RoundState]
+playTurns ps = takeTurns (makeRound ps)
           where takeTurns rs (roll:rolls) =
                   rs : takeTurns (nextTurn $ playTurn roll rs) rolls
                 takeTurns rs [] = [rs]
@@ -211,12 +211,15 @@ handOutCards cards players = foldl' handCardsAndAdvance players hands
   where handCardsAndAdvance players hand = advancePlayer . modifyCurrent (giveHand hand) $ players
         giveHand hand player = player { hand = hand }
         hands = deal cards (countPlayers players)
-
-prettyRound :: [Int] -> IO ()
-prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
+        
+playGame :: Int -> [RoundState]
+playGame = watchHorses ps . makePlayerRolls . makeDiceRolls
   where ps = handOutCards deck $ fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
 
-main = prettyRound $ makePlayerRolls $ makeDiceRolls 2
+prettify :: [RoundState] -> IO ()
+prettify = putStrLn . intercalate "\n=====\n" . map showState
+
+main = prettify . playGame $ 2
 
 {-
 
