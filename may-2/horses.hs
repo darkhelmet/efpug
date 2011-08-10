@@ -123,6 +123,14 @@ showPlayers = intercalate "\n" . map showPlayer . toList
 showPot :: RoundState -> String
 showPot rs = "Pot: " ++ show (pot rs)
 
+summarize :: RoundState -> String
+summarize rs = intercalate "\n" . map (showPlayerHand rs) . (toList . players) $ rs
+               
+showPlayerHand rs player = name player ++ " has " ++ show howMany ++ suffix
+  where howMany = length . filter (==fromIntegral lastRoll) . hand $ player
+        lastRoll = previousRoll rs
+        suffix = if (howMany > 0) then " winnah!" else "... :("
+
 makeHorse :: Int -> Horse
 makeHorse finishSpot = Horse{position = Distance 0, finish = finishSpot}
 
@@ -217,7 +225,8 @@ playGame = watchHorses ps . makePlayerRolls . makeDiceRolls
   where ps = handOutCards deck $ fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
 
 prettify :: [RoundState] -> IO ()
-prettify = putStrLn . intercalate "\n=====\n" . map showState
+prettify rs = putStrLn $ showEachState rs ++ "\n\n" ++ summarize (last rs)
+  where showEachState = intercalate "\n=====\n" . map showState
 
 main = prettify . playGame $ 2
 
