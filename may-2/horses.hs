@@ -14,6 +14,11 @@ newtype Chips = Chips Int deriving (Eq, Ord, Num)
 instance Show Chips where
   show (Chips c) = "$" ++ show c
 
+newtype Card = Card Int deriving (Enum, Eq, Num, Show)
+
+deck :: [Card]
+deck = concat $ replicate 4 [2..12]
+
 data HorsePosition = Scratched Chips | Distance Int deriving (Show)
 
 data Horse = Horse { position :: HorsePosition
@@ -22,10 +27,11 @@ data Horse = Horse { position :: HorsePosition
 
 data Player = Player { name :: String
                      , chips :: Chips
+                     , hand :: [Card]
                      } deriving (Show)
 
 player :: String -> Player
-player n = Player { name = n, chips = 100 }
+player n = Player { name = n, chips = 100, hand = [] }
 
 credit :: Chips -> Player -> Player
 credit c p = p { chips = chips p + c }
@@ -51,12 +57,18 @@ advancePlayer (Players (p:ps)) = Players (ps ++ [p])
 modifyAll :: (Player -> Player) -> Players -> Players
 modifyAll f = fromList . map f . toList
 
-modifyCurrent :: (Player -> (Player, a)) -> Players -> (Players, a)
-modifyCurrent tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
+modifyCurrent' :: (Player -> (Player, a)) -> Players -> (Players, a)
+modifyCurrent' tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
     where (updatedPlayer, stuff) = tx p
+          
+modifyCurrent :: (Player -> Player) -> Players -> Players
+modifyCurrent tx (Players (p:ps)) = fromList (tx p:ps)
 
 dropPlayer :: Players -> Players
 dropPlayer (Players (p:ps)) = fromList ps
+
+countPlayers :: Players -> Int
+countPlayers (Players ps) = length ps
 
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
@@ -151,7 +163,7 @@ playTurn roll rs
     | otherwise = rs{horses = M.adjust (scratchHorse (nextScratchValue rs)) roll (horses rs), previousRoll = roll }
   where charge = flip debit $ fromJust sc
         sc = scratchValue roll rs
-        (players', paid) = modifyCurrent charge (players rs)
+        (players', paid) = modifyCurrent' charge (players rs)
 
 nextTurn :: RoundState -> RoundState
 nextTurn rs
@@ -186,9 +198,23 @@ playRound' ps = takeTurns (makeRound ps)
                   rs : takeTurns (nextTurn $ playTurn roll rs) rolls
                 takeTurns rs [] = [rs]
 
+everyNth :: Int -> [a] -> [a]
+everyNth n (x:xs) = x:everyNth n (drop (n-1) xs)
+everyNth n [] = []
+
+deal :: [Card] -> Int -> [[Card]]
+deal cards n = zipWith giveCards [0..n-1] (replicate n cards)
+  where giveCards ix cards = everyNth n (drop ix cards)
+        
+handOutCards :: [Card] -> Players -> Players
+handOutCards cards players = foldl' handCardsAndAdvance players hands
+  where handCardsAndAdvance players hand = advancePlayer . modifyCurrent (giveHand hand) $ players
+        giveHand hand player = player { hand = hand }
+        hands = deal cards (countPlayers players)
+
 prettyRound :: [Int] -> IO ()
 prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
-  where ps = fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
+  where ps = handOutCards deck $ fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
 
 main = prettyRound $ makePlayerRolls $ makeDiceRolls 2
 
