@@ -14,6 +14,11 @@ newtype Chips = Chips Int deriving (Eq, Ord, Num)
 instance Show Chips where
   show (Chips c) = "$" ++ show c
 
+newtype Card = Card Int deriving (Enum, Eq, Num, Show)
+
+deck :: [Card]
+deck = concat $ replicate 4 [2..12]
+
 data HorsePosition = Scratched Chips | Distance Int deriving (Show)
 
 data Horse = Horse { position :: HorsePosition
@@ -22,10 +27,11 @@ data Horse = Horse { position :: HorsePosition
 
 data Player = Player { name :: String
                      , chips :: Chips
+                     , hand :: [Card]
                      } deriving (Show)
 
 player :: String -> Player
-player n = Player { name = n, chips = 100 }
+player n = Player { name = n, chips = 100, hand = [] }
 
 credit :: Chips -> Player -> Player
 credit c p = p { chips = chips p + c }
@@ -51,12 +57,18 @@ advancePlayer (Players (p:ps)) = Players (ps ++ [p])
 modifyAll :: (Player -> Player) -> Players -> Players
 modifyAll f = fromList . map f . toList
 
-modifyCurrent :: (Player -> (Player, a)) -> Players -> (Players, a)
-modifyCurrent tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
+modifyCurrent' :: (Player -> (Player, a)) -> Players -> (Players, a)
+modifyCurrent' tx (Players (p:ps)) = (fromList (updatedPlayer:ps), stuff)
     where (updatedPlayer, stuff) = tx p
+          
+modifyCurrent :: (Player -> Player) -> Players -> Players
+modifyCurrent tx (Players (p:ps)) = fromList (tx p:ps)
 
 dropPlayer :: Players -> Players
 dropPlayer (Players (p:ps)) = fromList ps
+
+countPlayers :: Players -> Int
+countPlayers (Players ps) = length ps
 
 advanceHorse :: Horse -> Horse
 advanceHorse h = case position h of
@@ -75,7 +87,7 @@ data RoundState = RoundState { horses :: M.IntMap Horse
                              , pot :: Chips
                              , previousRoll :: Int
                              , players :: Players } deriving (Show)
-
+                                                             
 padString :: Int -> String -> String
 padString width str
     | length str < width = replicate (width - length str) ' ' ++ str
@@ -110,6 +122,14 @@ showPlayers = intercalate "\n" . map showPlayer . toList
 
 showPot :: RoundState -> String
 showPot rs = "Pot: " ++ show (pot rs)
+
+summarize :: RoundState -> String
+summarize rs = intercalate "\n" . map (showPlayerHand rs) . (toList . players) $ rs
+               
+showPlayerHand rs player = name player ++ " has " ++ show howMany ++ suffix
+  where howMany = length . filter (==fromIntegral lastRoll) . hand $ player
+        lastRoll = previousRoll rs
+        suffix = if (howMany > 0) then " winnah!" else "... :("
 
 makeHorse :: Int -> Horse
 makeHorse finishSpot = Horse{position = Distance 0, finish = finishSpot}
@@ -151,7 +171,7 @@ playTurn roll rs
     | otherwise = rs{horses = M.adjust (scratchHorse (nextScratchValue rs)) roll (horses rs), previousRoll = roll }
   where charge = flip debit $ fromJust sc
         sc = scratchValue roll rs
-        (players', paid) = modifyCurrent charge (players rs)
+        (players', paid) = modifyCurrent' charge (players rs)
 
 nextTurn :: RoundState -> RoundState
 nextTurn rs
@@ -175,22 +195,40 @@ gameOver rs = onePlayerLeft || horseFinished
     where onePlayerLeft = 1 == (length $ toList $ players rs)
           horseFinished = isJust . winner $ rs
 
-playRound :: Players -> [Int] -> [RoundState]
-playRound ps rolls = losers ++ [first]
-    where states = playRound' ps rolls
+watchHorses :: Players -> [Int] -> [RoundState]
+watchHorses ps rolls = losers ++ [first]
+    where states = playTurns ps rolls
           (losers,first:_) = span (not . gameOver) states
 
-playRound' :: Players -> [Int] -> [RoundState]
-playRound' ps = takeTurns (makeRound ps)
+playTurns :: Players -> [Int] -> [RoundState]
+playTurns ps = takeTurns (makeRound ps)
           where takeTurns rs (roll:rolls) =
                   rs : takeTurns (nextTurn $ playTurn roll rs) rolls
                 takeTurns rs [] = [rs]
 
-prettyRound :: [Int] -> IO ()
-prettyRound = putStrLn . intercalate "\n=====\n" . map showState . playRound ps
-  where ps = fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
+everyNth :: Int -> [a] -> [a]
+everyNth n (x:xs) = x:everyNth n (drop (n-1) xs)
+everyNth n [] = []
 
-main = prettyRound $ makePlayerRolls $ makeDiceRolls 2
+deal :: [Card] -> Int -> [[Card]]
+deal cards n = zipWith giveCards [0..n-1] (replicate n cards)
+  where giveCards ix cards = everyNth n (drop ix cards)
+        
+handOutCards :: [Card] -> Players -> Players
+handOutCards cards players = foldl' handCardsAndAdvance players hands
+  where handCardsAndAdvance players hand = advancePlayer . modifyCurrent (giveHand hand) $ players
+        giveHand hand player = player { hand = hand }
+        hands = deal cards (countPlayers players)
+        
+playGame :: Int -> [RoundState]
+playGame = watchHorses ps . makePlayerRolls . makeDiceRolls
+  where ps = handOutCards deck $ fromList $ map player $ ["Daniel", "Justin", "Benny", "Dale", "Kevin"]
+
+prettify :: [RoundState] -> IO ()
+prettify rs = putStrLn $ showEachState rs ++ "\n\n" ++ summarize (last rs)
+  where showEachState = intercalate "\n=====\n" . map showState
+
+main = prettify . playGame $ 2
 
 {-
 
